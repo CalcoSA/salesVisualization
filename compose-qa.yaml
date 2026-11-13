@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+    image: callcenter-backend:qa
+    restart: unless-stopped
+    env_file:
+      - .env.qa
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      APP_ENV: qa
+    expose:
+      - "3001"
+
+  frontend:
+    build:
+      context: .
+      target: frontend
+    image: callcenter-frontend:qa
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - backend
