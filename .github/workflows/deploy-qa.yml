@@ -1,0 +1,98 @@
+name: Deploy Dashboard Call Center QA
+
+on:
+  push:
+    branches:
+      - qa
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dashboard-callcenter-qa
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to QA VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          ssh-keyscan -H -t ed25519 "$VM_HOST" > ~/.ssh/known_hosts
+
+          ssh-keygen -lf ~/.ssh/known_hosts | grep -F "SHA256:snfZwwx/Xoaze0s0xkOfWvYGszRFelgK8cYrZoDDfiE"
+
+      - name: Transfer application to VM
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          REMOTE_DIR="/home/${VM_USER}/dashboard-callcenter-qa"
+
+          tar \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='dist' \
+            --exclude='.env' \
+            --exclude='.env.*' \
+            -czf - . | ssh \
+              -i ~/.ssh/id_ed25519 \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              "${VM_USER}@${VM_HOST}" \
+              "mkdir -p '${REMOTE_DIR}' && tar -xzf - -C '${REMOTE_DIR}'"
+
+      - name: Deploy QA containers
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+        run: |
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "${VM_USER}@${VM_HOST}" 'bash -s' <<'REMOTE'
+
+          set -euo pipefail
+
+          cd "$HOME/dashboard-callcenter-qa"
+
+          umask 077
+
+          printf 'CALLCENTER_API_KEY=' > .env.qa
+
+          gcloud secrets versions access latest \
+            --secret=dashcallcenter-qa-api-key \
+            --project=calco-sa-508817 \
+            | tr -d '\r\n' >> .env.qa
+
+          printf '\n' >> .env.qa
+
+          chmod 600 .env.qa
+
+          docker compose \
+            -p dashboard-callcenter-qa \
+            -f compose-qa.yaml \
+            up -d --build --remove-orphans
+
+          docker compose \
+            -p dashboard-callcenter-qa \
+            -f compose-qa.yaml \
+            ps
+
+          REMOTE
