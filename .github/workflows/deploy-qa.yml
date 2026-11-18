@@ -42,7 +42,7 @@ jobs:
           VM_HOST: ${{ secrets.VM_HOST }}
           VM_USER: ${{ secrets.VM_USER }}
         run: |
-          REMOTE_DIR="/home/${VM_USER}/dashboard-callcenter-qa"
+          REMOTE_DIR="/opt/apps/dashboard-callcenter/qa"
 
           tar \
             --exclude='.git' \
@@ -70,7 +70,7 @@ jobs:
 
           set -euo pipefail
 
-          cd "$HOME/dashboard-callcenter-qa"
+          cd "/opt/apps/dashboard-callcenter/qa"
 
           umask 077
 
